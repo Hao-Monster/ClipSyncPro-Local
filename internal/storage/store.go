@@ -1,0 +1,123 @@
+package storage
+
+import (
+	"context"
+	"errors"
+	"strings"
+	"time"
+
+	"clipsyncpro/internal/domain"
+)
+
+var ErrNotFound = errors.New("record not found")
+
+type Filter struct {
+	UserID          string
+	Keyword         string
+	KeywordHashes   []string
+	DateStart       *time.Time
+	DateEnd         *time.Time
+	SensitiveOnly   bool
+	FavoriteOnly    bool
+	ExcludeFavorite bool
+	IncludeDeleted  bool
+	Limit           int
+	Offset          int
+}
+
+type QueueAction string
+
+const (
+	QueueCreate QueueAction = "create"
+	QueueUpdate QueueAction = "update"
+	QueueDelete QueueAction = "delete"
+)
+
+type QueueStatus string
+
+const (
+	QueuePending QueueStatus = "pending"
+	QueueSyncing QueueStatus = "syncing"
+	QueueDone    QueueStatus = "done"
+	QueueFailed  QueueStatus = "failed"
+)
+
+type SyncQueueItem struct {
+	ID            int64       `json:"id"`
+	RecordID      string      `json:"record_id"`
+	Action        QueueAction `json:"action"`
+	RetryCount    int         `json:"retry_count"`
+	Status        QueueStatus `json:"status"`
+	LastError     string      `json:"last_error,omitempty"`
+	NextAttemptAt time.Time   `json:"next_attempt_at"`
+	CreatedAt     time.Time   `json:"created_at"`
+	UpdatedAt     time.Time   `json:"updated_at"`
+}
+
+type Store interface {
+	Ping(ctx context.Context) error
+	UpsertRecord(ctx context.Context, rec domain.ClipboardRecord) error
+	GetRecord(ctx context.Context, id string) (domain.ClipboardRecord, error)
+	ListRecords(ctx context.Context, filter Filter) ([]domain.ClipboardRecord, error)
+	ListRecordSummaries(ctx context.Context, filter Filter) ([]domain.ClipboardRecord, error)
+	DeleteRecords(ctx context.Context, ids []string) error
+	SetFavorite(ctx context.Context, id string, isFavorite bool) error
+	Enqueue(ctx context.Context, item SyncQueueItem) (int64, error)
+	ListPendingQueue(ctx context.Context, limit int) ([]SyncQueueItem, error)
+	MarkQueueDone(ctx context.Context, id int64) error
+	MarkQueueRetry(ctx context.Context, id int64, errText string) error
+	ListPrompts(ctx context.Context, category, keyword string) ([]*domain.PromptTemplate, error)
+	GetPrompt(ctx context.Context, id string) (*domain.PromptTemplate, error)
+	SavePrompt(ctx context.Context, prompt *domain.PromptTemplate) error
+	DeletePrompt(ctx context.Context, id string) error
+	IncrementPromptUsage(ctx context.Context, id string) error
+}
+
+func QueueRetryDelay(retryCount int) time.Duration {
+	if retryCount < 1 {
+		retryCount = 1
+	}
+	if retryCount > 9 {
+		return 15 * time.Minute
+	}
+	delay := 5 * time.Second * time.Duration(1<<uint(retryCount-1))
+	if delay > 15*time.Minute {
+		return 15 * time.Minute
+	}
+	return delay
+}
+
+func RecordMatchesFilter(rec domain.ClipboardRecord, filter Filter) bool {
+	if filter.UserID != "" && rec.UserID != filter.UserID {
+		return false
+	}
+	if !filter.IncludeDeleted && rec.DeletedAt != nil {
+		return false
+	}
+	if filter.SensitiveOnly && !rec.IsSensitive {
+		return false
+	}
+	if filter.FavoriteOnly && !rec.IsFavorite {
+		return false
+	}
+	if filter.ExcludeFavorite && rec.IsFavorite {
+		return false
+	}
+	if filter.DateStart != nil && rec.ClientCreatedAt.Before(*filter.DateStart) {
+		return false
+	}
+	if filter.DateEnd != nil && rec.ClientCreatedAt.After(*filter.DateEnd) {
+		return false
+	}
+	keyword := strings.ToLower(filter.Keyword)
+	if keyword != "" {
+		if !rec.IsSensitive && rec.ContentType != domain.ContentImage && strings.Contains(strings.ToLower(rec.ContentText), keyword) {
+			return true
+		}
+		if rec.IsSensitive && domain.ContainsAll(rec.SearchIndex, filter.KeywordHashes) {
+			return true
+		}
+		return false
+	}
+	return true
+}

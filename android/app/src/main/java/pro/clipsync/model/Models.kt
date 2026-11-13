@@ -1,0 +1,141 @@
+package pro.clipsync.model
+
+import org.json.JSONArray
+import org.json.JSONObject
+
+data class CipherText(
+    val algorithm: String,
+    val kdf: String,
+    val iterations: Int,
+    val salt: String,
+    val nonce: String,
+    val ciphertext: String,
+) {
+    fun toJson(): JSONObject {
+        return JSONObject()
+            .put("algorithm", algorithm)
+            .put("kdf", kdf)
+            .put("iterations", iterations)
+            .put("salt", salt)
+            .put("nonce", nonce)
+            .put("ciphertext", ciphertext)
+    }
+
+    companion object {
+        fun fromJson(json: JSONObject?): CipherText? {
+            if (json == null) return null
+            return CipherText(
+                algorithm = json.optString("algorithm"),
+                kdf = json.optString("kdf"),
+                iterations = json.optInt("iterations"),
+                salt = json.optString("salt"),
+                nonce = json.optString("nonce"),
+                ciphertext = json.optString("ciphertext"),
+            )
+        }
+    }
+}
+
+data class ClipboardRecord(
+    val id: String,
+    val contentType: String,
+    val contentText: String?,
+    val contentCipher: CipherText?,
+    val contentHash: String,
+    val isSensitive: Boolean,
+    val sensitiveType: String?,
+    val accountCipher: CipherText?,
+    val passwordCipher: CipherText?,
+    val remarkCipher: CipherText?,
+    val sourceDeviceId: String,
+    val sourcePlatform: String,
+    val clientCreatedAt: String,
+    val isFavorite: Boolean = false,
+    val favoriteAt: String? = null,
+    val syncStatus: String,
+) {
+    val summary: String
+        get() = when {
+            isSensitive -> "已加密账户密码记录"
+            contentType == "image" -> "图片"
+            else -> contentText.orEmpty().replace("\n", " ").take(120)
+        }
+
+    companion object {
+        fun fromJson(json: JSONObject): ClipboardRecord {
+            return ClipboardRecord(
+                id = json.getString("id"),
+                contentType = json.optString("content_type"),
+                contentText = nullableString(json, "content_text"),
+                contentCipher = CipherText.fromJson(json.optJSONObject("content_cipher")),
+                contentHash = json.optString("content_hash"),
+                isSensitive = json.optBoolean("is_sensitive"),
+                sensitiveType = nullableString(json, "sensitive_type"),
+                accountCipher = CipherText.fromJson(json.optJSONObject("account_cipher")),
+                passwordCipher = CipherText.fromJson(json.optJSONObject("password_cipher")),
+                remarkCipher = CipherText.fromJson(json.optJSONObject("remark_cipher")),
+                sourceDeviceId = json.optString("source_device_id"),
+                sourcePlatform = json.optString("source_platform"),
+                clientCreatedAt = json.optString("client_created_at"),
+                isFavorite = json.optBoolean("is_favorite"),
+                favoriteAt = nullableString(json, "favorite_at"),
+                syncStatus = json.optString("sync_status"),
+            )
+        }
+
+        fun listFromJson(array: JSONArray): List<ClipboardRecord> {
+            return buildList {
+                for (i in 0 until array.length()) add(fromJson(array.getJSONObject(i)))
+            }
+        }
+
+        private fun nullableString(json: JSONObject, name: String): String? {
+            return if (json.has(name) && !json.isNull(name)) json.optString(name) else null
+        }
+    }
+}
+
+data class PromptTemplate(
+    val id: String,
+    val title: String,
+    val category: String,
+    val templateContent: String,
+    val variables: List<String>,
+    val shortcut: String,
+    val usageCount: Int,
+    val isFavorite: Boolean,
+) {
+    companion object {
+        fun fromJson(json: JSONObject): PromptTemplate {
+            val vars = buildList {
+                val array = json.optJSONArray("variables")
+                if (array != null) {
+                    for (i in 0 until array.length()) add(array.getString(i))
+                }
+            }
+            return PromptTemplate(
+                id = json.optString("id"),
+                title = json.optString("title"),
+                category = json.optString("category", "通用"),
+                templateContent = json.optString("template_content"),
+                variables = vars,
+                shortcut = json.optString("shortcut"),
+                usageCount = json.optInt("usage_count"),
+                isFavorite = json.optBoolean("is_favorite"),
+            )
+        }
+
+        fun listFromJson(array: JSONArray): List<PromptTemplate> {
+            return buildList {
+                for (i in 0 until array.length()) add(fromJson(array.getJSONObject(i)))
+            }
+        }
+    }
+}
+
+data class RevealedSensitive(
+    val content: String,
+    val account: String,
+    val password: String,
+    val remark: String,
+)

@@ -1,0 +1,49 @@
+# Binaries & Build Outputs
+*.exe
+*.dll
+*.so
+*.dylib
+*.pdb
+*.ipdb
+*.iobj
+*.test
+*.out
+dist/
+bin/
+obj/
+build/
+artifacts/
+backups/
+tmp/
+.gradle/
+android/**/build/
+windows/**/bin/
+windows/**/obj/
+windows/.vs/
+.vs/
+.idea/
+.vscode/
+
+# OS Metadata & Thumbnails
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# Local Clipboard Database & SQLite Runtime Files (NEVER COMMIT)
+*.db
+*.db-wal
+*.db-shm
+*.db-journal
+*.sqlite
+*.sqlite3
+
+# Cryptographic Keys & Environment Secrets (NEVER COMMIT)
+*.key
+master.key
+.env
+.env.*
+local.env
+
+# Runtime Logs
+*.log
+agent.log
